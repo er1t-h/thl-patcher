@@ -1,0 +1,8 @@
+window_name: "Patch FR - The Hundred Line - Last Defense Academy"
+default_paths:
+  - target_os: windows
+    possible_paths:
+      - "C:\\Program Files (x86)\\Steam\\steamapps\\common\\The Hundred Line -Last Defense Academy-"
+  - target_os: linux
+    possible_paths:
+      - "~/.steam/debian-installation/steamapps/common/The Hundred Line -Last Defense Academy-"
