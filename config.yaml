@@ -1,20 +1,6 @@
-window_name: "Patch FR - The Hundred Line - Last Defense Academy"
-original:
-  determinants:
-    - file_name: "gamedata/app_steam_text01.dx11.mvgl"
-      sha256: "0f3458f1e39334961eabd20d3a40bac9bfc61797f4c843efb6406d5d53455365"
-    - file_name: "gamedata/app_text01.dx11.mvgl"
-      sha256: "34713a3f12515075c253c1dd78b8a14b1c5b74dc1c5e9b5c07ad5746cdaab658"
-    - file_name: "gamedata/patch_1.dx11.mvgl"
-      sha256: "7ab65051c90d4b68276a3ce8447d00c644737e4a490ef961ab038ee126ce1100"
-    - file_name: "gamedata/patch_steam_text01.dx11.mvgl"
-      sha256: "f49f1374d4a4dd404557f13ffba834efeb65c4c9032a3e1aa220d7e3f65a0560"
-    - file_name: "gamedata/patch_text01.dx11.mvgl"
-      sha256: "65caba565759a2d51a43972d8c9c9ff0ee4768f3a8a8ee465c03eb092ef9f137"
+window_name: "Patcher Test"
+source: "http://localhost:8080/source.yaml"
 default_paths:
-  - target_os: windows
-    possible_paths:
-      - "C:\\Program Files (x86)\\Steam\\steamapps\\common\\The Hundred Line -Last Defense Academy-"
   - target_os: linux
     possible_paths:
-      - "~/.steam/debian-installation/steamapps/common/The Hundred Line -Last Defense Academy-"
+      - "old"
