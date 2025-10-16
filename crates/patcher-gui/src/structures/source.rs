@@ -13,7 +13,6 @@ pub struct Determinants {
 pub struct Version {
     pub name: String,
     pub update_link: Option<String>,
-    pub jumpstart_link: Option<String>,
     pub determinants: Vec<Determinants>,
 }
 

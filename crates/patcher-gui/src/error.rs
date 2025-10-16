@@ -4,6 +4,8 @@ pub enum Error {
     Walkdir(walkdir::Error),
     Io(std::io::Error),
     Rustyline(rustyline::error::ReadlineError),
+    NoMatchingVersion,
+    NoPathSelected,
 }
 impl From<walkdir::Error> for Error {
     fn from(value: walkdir::Error) -> Self {
