@@ -1,9 +1,10 @@
 use std::{
-    env::current_dir, path::Path
+    env::current_dir, ffi::OsString, fs::File, io::BufReader, path::{Path, PathBuf}, sync::{Arc, Mutex}, thread
 };
 
-use eframe::egui;
+use eframe::egui::{self, ProgressBar};
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use tempfile::tempdir;
 use walkdir::WalkDir;
 
@@ -31,19 +32,34 @@ impl From<rustyline::error::ReadlineError> for Error {
 }
 
 #[derive(Debug, Deserialize, Clone)]
+struct Determinants {
+    file_name: String,
+    sha256: String
+}
+
+#[derive(Debug, Deserialize, Clone, Default)]
+struct Original {
+    determinants: Vec<Determinants>
+}
+
+
+#[derive(Debug, Deserialize, Clone)]
 struct DefaultPaths {
     target_os: String,
     possible_paths: Vec<String>,
 }
+
 #[derive(Debug, Deserialize, Clone)]
 struct PatcherConfig {
     window_name: String,
+    original: Original,
     default_paths: Vec<DefaultPaths>,
 }
 impl Default for PatcherConfig {
     fn default() -> Self {
         Self {
             window_name: String::from("Patcher"),
+            original: Original::default(),
             default_paths: vec![],
         }
     }
@@ -51,12 +67,16 @@ impl Default for PatcherConfig {
 
 impl PatcherConfig {
     fn get_default_path(&self) -> Option<String> {
-        for entry in self.default_paths.iter().filter(|x| x.target_os == std::env::consts::OS) {
+        for entry in self
+            .default_paths
+            .iter()
+            .filter(|x| x.target_os == std::env::consts::OS)
+        {
             for path in &entry.possible_paths {
                 let path = shellexpand::tilde(path);
                 let hypothesis = Path::new(path.as_ref());
                 if hypothesis.exists() {
-                    return Some(path.to_string())
+                    return Some(path.to_string());
                 }
             }
         }
@@ -79,7 +99,7 @@ fn cli_mode(config: &PatcherConfig) -> Result<(), Error> {
     let current = current_dir()?;
     let temp_dir = tempdir()?;
     let old = Path::new(&path);
-    thl_patcher::patch(old, &current.join("patch"), &temp_dir.path());
+    thl_patcher::patch(old, &current.join("patch"), &temp_dir.path(), |_| ());
 
     for file in WalkDir::new(temp_dir.path()) {
         let file = file?;
@@ -105,7 +125,7 @@ fn get_config() -> PatcherConfig {
 }
 
 fn main() {
-    println!("Patcher fait par Er1t -> github");
+    println!("Patcher réalisé par Er1t : https://github.com/er1t-h/thl-patcher");
     let config = get_config();
 
     let options = eframe::NativeOptions {
@@ -125,16 +145,23 @@ fn main() {
     };
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum State {
+    NotApplied,
+    Progressing(f32),
+    Applied,
+}
+
 struct MyApp {
     old: Option<String>,
-    applied: bool,
+    applied: Arc<Mutex<State>>,
 }
 
 impl MyApp {
     fn new(config: &PatcherConfig) -> Self {
         Self {
             old: config.get_default_path(),
-            applied: false,
+            applied: Arc::new(Mutex::new(State::NotApplied)),
         }
     }
 }
@@ -147,7 +174,7 @@ impl eframe::App for MyApp {
                 if ui.button("Parcourir les fichiers...").clicked()
                     && let Some(path) = rfd::FileDialog::new().pick_folder()
                 {
-                    self.applied = false;
+                    *self.applied.lock().unwrap() = State::NotApplied;
                     self.old = Some(path.display().to_string());
                 }
                 if let Some(old) = &self.old {
@@ -157,28 +184,39 @@ impl eframe::App for MyApp {
 
                 if let Some(ref old) = self.old {
                     if ui.button("Appliquer le Patch").clicked() {
-                        ui.spinner();
                         let current = current_dir().unwrap();
                         let temp_dir = tempdir().unwrap();
-                        let old = Path::new(old);
-                        thl_patcher::patch(old, &current.join("patch"), &temp_dir.path());
+                        let old = PathBuf::from(old);
+                        let applied = Arc::clone(&self.applied);
+                        thread::spawn(move || {
+                            *applied.lock().unwrap() = State::Progressing(0.);
+                            thl_patcher::patch(
+                                &old,
+                                &current.join("patch"),
+                                &temp_dir.path(),
+                                |state| *applied.lock().unwrap() = State::Progressing(state.done as f32 / state.out_of as f32),
+                            );
 
-                        for file in WalkDir::new(temp_dir.path()) {
-                            let file = file.unwrap();
-                            if !file.file_type().is_file() {
-                                continue;
+                            for file in WalkDir::new(temp_dir.path()) {
+                                let file = file.unwrap();
+                                if !file.file_type().is_file() {
+                                    continue;
+                                }
+                                let path = file.into_path();
+                                let suffix = path.strip_prefix(temp_dir.path()).unwrap();
+                                std::fs::copy(&path, old.join(suffix)).unwrap();
+                                *applied.lock().unwrap() = State::Applied;
                             }
-                            let path = file.into_path();
-                            let suffix = path.strip_prefix(temp_dir.path()).unwrap();
-                            std::fs::copy(&path, old.join(suffix)).unwrap();
-                        }
+                        });
 
                         self.old = None;
-                        self.applied = true;
                     }
                 }
+                if let State::Progressing(percent) = *self.applied.lock().unwrap() {
+                    ui.add(ProgressBar::new(percent).show_percentage());
+                }
 
-                if self.applied {
+                if *self.applied.lock().unwrap() == State::Applied {
                     ui.label("Patch appliqué avec succès !");
                 }
             })

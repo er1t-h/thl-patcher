@@ -22,7 +22,7 @@ fn main() {
             thl_patcher::diff(&args.old, &args.new, &args.destination);
         }
         Command::Patch => {
-            thl_patcher::patch(&args.old, &args.new, &args.destination);
+            thl_patcher::patch(&args.old, &args.new, &args.destination, |_| ());
         }
     }
 }

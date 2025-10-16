@@ -51,7 +51,13 @@ pub fn diff(old: &Path, new: &Path, destination: &Path) {
     }
 }
 
-pub fn patch(old: &Path, new: &Path, destination: &Path) {
+#[derive(Default, Clone, Copy)]
+pub struct State {
+    pub done: usize,
+    pub out_of: usize,
+}
+
+pub fn patch(old: &Path, new: &Path, destination: &Path, mut update: impl FnMut(State)) {
     if old.is_file() && new.is_file() {
         ddelta::apply_chunked(
             &mut BufReader::new(File::open(old).unwrap()),
@@ -60,6 +66,14 @@ pub fn patch(old: &Path, new: &Path, destination: &Path) {
         )
         .unwrap();
     } else if old.is_dir() && new.is_dir() && (destination.is_dir() || !destination.exists()) {
+        let mut state = State {
+            done: 0,
+            out_of: WalkDir::new(&new)
+                .into_iter()
+                .filter(|file| file.as_ref().is_ok_and(|entry| entry.file_type().is_file()))
+                .count(),
+        };
+
         std::fs::create_dir_all(&destination).unwrap();
         for file in WalkDir::new(&new) {
             let file = file.unwrap();
@@ -82,6 +96,8 @@ pub fn patch(old: &Path, new: &Path, destination: &Path) {
                 &mut BufReader::new(XzDecoder::new(File::open(path).unwrap())),
             )
             .unwrap();
+            state.done += 1;
+            (update)(state)
         }
     }
 }
