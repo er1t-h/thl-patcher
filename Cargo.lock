@@ -2749,6 +2749,7 @@ dependencies = [
  "sha2",
  "shellexpand",
  "tempfile",
+ "thiserror 2.0.17",
  "thl-patcher",
  "walkdir",
  "zip",
