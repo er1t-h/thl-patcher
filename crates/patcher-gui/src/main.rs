@@ -1,6 +1,4 @@
 use std::{
-    cell::{Cell, RefCell},
-    env::current_dir,
     io::Cursor,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -50,10 +48,7 @@ fn main() {
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum State {
     NotUpdating,
-    Updating {
-        versions: f32,
-        files: f32
-    },
+    Updating { versions: f32, files: f32 },
     Updated,
 }
 
@@ -141,8 +136,10 @@ impl eframe::App for MyApp {
                         std::thread::spawn(move || {
                             for (i, version) in new.into_iter().enumerate() {
                                 let versions = i as f32 / number_of_patch;
-                                *progress.lock().unwrap() =
-                                    State::Updating { versions, files: 0. };
+                                *progress.lock().unwrap() = State::Updating {
+                                    versions,
+                                    files: 0.,
+                                };
                                 // A temporary directory where patched files go
                                 let temp_dir = tempdir().unwrap();
                                 // A temporary directory to extract the archive
@@ -157,11 +154,10 @@ impl eframe::App for MyApp {
                                 let old = PathBuf::from(&old);
 
                                 thl_patcher::patch(&old, &patch.path(), &temp_dir.path(), |s| {
-                                    *progress.lock().unwrap() =
-                                        State::Updating {
-                                            versions,
-                                            files: s.done as f32 / s.out_of as f32
-                                        }
+                                    *progress.lock().unwrap() = State::Updating {
+                                        versions,
+                                        files: s.done as f32 / s.out_of as f32,
+                                    };
                                 });
 
                                 for file in WalkDir::new(temp_dir.path()) {
@@ -183,16 +179,17 @@ impl eframe::App for MyApp {
                 }
 
                 match *self.progress.lock().unwrap() {
-                    State::Updating{ files, versions } => {
+                    State::Updating { files, versions } => {
                         ui.add(ProgressBar::new(versions).show_percentage());
                         ui.add(ProgressBar::new(files).show_percentage());
-                    },
+                    }
                     State::NotUpdating => (),
                     State::Updated => {
                         ui.label("Mise à jour complétée avec succès");
                     }
                 }
             });
+
             ui.ctx().request_repaint();
         });
     }
