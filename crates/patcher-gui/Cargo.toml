@@ -8,7 +8,6 @@ base16ct = "0.3.0"
 eframe = { version = "0.33.0", features = ["wgpu"] }
 minreq = { version = "2.14.1", features = ["https-rustls"] }
 rfd = "0.15.4"
-rustyline = "17.0.2"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_yaml = "0.9.34"
 sha2 = "0.10.9"
@@ -17,4 +16,5 @@ tempfile = "3.23.0"
 thiserror = "2.0.17"
 thl-patcher = { version = "0.1.0", path = "../patcher-lib" }
 walkdir = "2.5.0"
-zip = { version = "6.0.0", features = ["deflate"] }
+tar = "0.4.44"
+flate2 = "1.1.4"

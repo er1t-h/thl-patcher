@@ -19,7 +19,7 @@ fn main() {
     let args = Argument::parse();
     match args.subcommand {
         Command::Diff => {
-            thl_patcher::diff(&args.old, &args.new, &args.destination);
+            thl_patcher::diff(&args.old, &args.new, &args.destination, |_| ());
         }
         Command::Patch => {
             thl_patcher::patch(&args.old, &args.new, &args.destination, |_| ());

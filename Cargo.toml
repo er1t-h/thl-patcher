@@ -1,5 +1,5 @@
 [workspace]
-members = [
+members = ["crates/patch-creator",
     "crates/patcher-gui",
     "crates/patcher-lib",
 ]

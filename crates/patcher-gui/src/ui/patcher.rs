@@ -1,13 +1,19 @@
 use std::{
-    fmt::Display, io::{self, Cursor}, path::{Path, PathBuf}, sync::mpsc::{self, Receiver}
+    io::{self, Cursor},
+    path::Path,
+    sync::mpsc::{self, Receiver},
 };
 
-use crate::structures::{config::PatcherConfig, source::Source};
+use crate::{
+    structures::{config::PatcherConfig, source::Source},
+    transmitter_reloader::TransmitterReloader,
+};
 use eframe::egui::{Color32, ProgressBar, Ui};
+use flate2::read::GzDecoder;
+use tar::Archive;
 use tempfile::tempdir;
 use thiserror::Error;
 use walkdir::WalkDir;
-use zip::ZipArchive;
 
 #[derive(Debug)]
 enum Version {
@@ -148,18 +154,15 @@ impl Patcher {
     }
 
     fn download_and_patch(
-        tx: mpsc::Sender<Action>,
-        ctx: eframe::egui::Context,
-        old: String,
-        new: Vec<crate::structures::source::Version>,
+        mut transmit: impl FnMut(Action),
+        original: &Path,
+        new: &[crate::structures::source::Version],
     ) {
-        let transmit = |action| {
-            let _ = tx.send(action);
-            ctx.request_repaint();
-        };
         let number_of_patch = new.len() as f32;
+
         for (i, version) in new.into_iter().enumerate() {
             let versions = i as f32 / number_of_patch;
+
             transmit(Action::UpdateProgress(Progress::Updating {
                 versions,
                 files: 0.,
@@ -171,11 +174,11 @@ impl Patcher {
 
             let update_link = version.update_link.as_ref().unwrap();
             let archive_content = minreq::get(update_link).send().unwrap().into_bytes();
-            let mut archive = ZipArchive::new(Cursor::new(archive_content)).unwrap();
-            archive.extract(patch.path()).unwrap();
-            let old = PathBuf::from(&old);
+            let decoder = GzDecoder::new(Cursor::new(archive_content));
+            let mut archive = Archive::new(decoder);
+            archive.unpack(patch.path()).unwrap();
 
-            thl_patcher::patch(&old, &patch.path(), &temp_dir.path(), |s| {
+            thl_patcher::patch(&original, &patch.path(), &temp_dir.path(), |s| {
                 transmit(Action::UpdateProgress(Progress::Updating {
                     versions,
                     files: s.done as f32 / s.out_of as f32,
@@ -189,7 +192,7 @@ impl Patcher {
                 }
                 let path = file.into_path();
                 let suffix = path.strip_prefix(temp_dir.path()).unwrap();
-                std::fs::copy(&path, old.join(suffix)).unwrap();
+                std::fs::copy(&path, original.join(suffix)).unwrap();
             }
             transmit(Action::UpVersion);
         }
@@ -201,17 +204,23 @@ impl Patcher {
             && let Version::Found(current_version) = self.version
         {
             if ui.button("Appliquer le Patch").clicked() {
-                let (_, new) = self
+                let versions_to_install = self
                     .source
-                    .versions
-                    .split_at_checked(current_version + 1)
-                    .unwrap_or_default();
-                let versions = new.to_vec();
+                    .get_versions_to_install(current_version)
+                    .to_vec();
                 let old = old.clone();
                 let (tx, rx) = mpsc::channel();
-                let ctx = ui.ctx().clone();
+                let transmitter = TransmitterReloader::new(tx, ui.ctx().clone());
                 self.receiver = Some(rx);
-                std::thread::spawn(move || Self::download_and_patch(tx, ctx, old, versions));
+                std::thread::spawn(move || {
+                    Self::download_and_patch(
+                        |message| {
+                            let _ = transmitter.send(message);
+                        },
+                        Path::new(&old),
+                        &versions_to_install,
+                    );
+                });
             }
         }
     }

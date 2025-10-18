@@ -7,6 +7,7 @@ use crate::{
 
 mod error;
 mod structures;
+mod transmitter_reloader;
 mod ui;
 
 fn get_config() -> PatcherConfig {
@@ -24,7 +25,7 @@ fn main() {
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([640.0, 240.0])
+            .with_inner_size([640.0, 300.0])
             .with_drag_and_drop(true),
         ..Default::default()
     };
@@ -37,7 +38,6 @@ fn main() {
 }
 
 struct MyApp {
-    global_state: (),
     app_screen: AppScreen,
 }
 
@@ -50,11 +50,9 @@ impl MyApp {
 
         match source {
             Ok(source) => MyApp {
-                global_state: (),
                 app_screen: AppScreen::Patcher(Patcher::new(config, source)),
             },
             Err(e) => MyApp {
-                global_state: (),
                 app_screen: AppScreen::source_error(e),
             },
         }

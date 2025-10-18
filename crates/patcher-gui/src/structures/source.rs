@@ -24,7 +24,7 @@ pub struct Source {
 impl Source {
     pub fn get_current_version(&self, path: &Path) -> Result<Option<usize>, std::io::Error> {
         let mut already_calculated: HashMap<&str, [u8; 64]> = HashMap::new();
-        'version: for (i, version) in self.versions.iter().enumerate() {
+        'version: for (i, version) in self.versions.iter().enumerate().rev() {
             for determinant in &version.determinants {
                 let hash = if let Some(x) = already_calculated.get(determinant.file.as_str()) {
                     x
@@ -40,7 +40,6 @@ impl Source {
                     already_calculated.get(&determinant.file.as_str()).unwrap()
                 };
 
-                // This can panic if the hash is badly formatted
                 if hash != determinant.sha256.as_bytes() {
                     continue 'version;
                 }
@@ -49,5 +48,19 @@ impl Source {
             return Ok(Some(i));
         }
         Ok(None)
+    }
+
+    pub fn get_versions_to_install(&self, current: usize) -> &[Version] {
+        let versions_to_install = self
+            .versions
+            .split_at_checked(current)
+            .unwrap_or_default()
+            .1;
+
+        if let Some(pos) = versions_to_install.iter().position(|x| x.update_link.is_none()) {
+            versions_to_install.split_at(pos).0
+        } else {
+            versions_to_install
+        }
     }
 }
