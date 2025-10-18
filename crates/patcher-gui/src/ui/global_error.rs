@@ -1,4 +1,4 @@
-use eframe::egui::{Color32, Response, RichText, Ui};
+use eframe::egui::{Color32, RichText, Ui};
 
 pub enum GlobalErrorType {
     SourceNotFound(minreq::Error),
@@ -21,15 +21,16 @@ pub struct SourceError {
 
 impl SourceError {
     pub fn update(&mut self, ui: &mut Ui) {
-        match &self.error {
+        let e = match &self.error {
             GlobalErrorType::SourceNotFound(e) => {
-                ui.colored_label(Color32::RED, "La source specifiee n'a pas ete trouvee");
-                ui.code(RichText::new(e.to_string()).color(Color32::RED));
+                ui.colored_label(Color32::RED, "La source spécifiée n'a pas été trouvée.");
+                e.to_string()
             }
             GlobalErrorType::SourceFormatError(e) => {
-                ui.colored_label(Color32::RED, "Le format de la source est invalide");
-                ui.code(RichText::new(e.to_string()).color(Color32::RED));
+                ui.colored_label(Color32::RED, "Le format de la source est invalide.");
+                e.to_string()
             }
-        }
+        };
+        ui.code(RichText::new(e).color(Color32::RED));
     }
 }
