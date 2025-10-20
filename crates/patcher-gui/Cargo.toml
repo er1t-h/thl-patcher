@@ -14,7 +14,7 @@ sha2 = "0.10.9"
 shellexpand = { version = "3.1.1", default-features = false, features = ["base-0", "tilde"] }
 tempfile = "3.23.0"
 thiserror = "2.0.17"
-thl-patcher = { version = "0.1.0", path = "../patcher-lib" }
+thl-patcher = { version = "0.1.0", path = "../patcher-lib", default-features = false, features = ["patch"] }
 walkdir = "2.5.0"
 tar = "0.4.44"
-flate2 = "1.1.4"
+xz2 = "0.1.7"

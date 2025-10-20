@@ -1,8 +1,7 @@
 use std::{fs::File, io::BufWriter, path::PathBuf, sync::mpsc::{self, Receiver}};
 
 use eframe::egui::{self, ProgressBar};
-use flate2::{write::GzEncoder, Compression};
-use tempfile::tempdir;
+use xz2::write::XzEncoder;
 
 fn main() {
     let options = eframe::NativeOptions {
@@ -24,7 +23,7 @@ struct MyApp {
     new: Option<PathBuf>,
     result: Option<PathBuf>,
     progress: Option<f32>,
-    rx: Option<Receiver<thl_patcher::State>>
+    rx: Option<Receiver<thl_patcher::DiffState>>
 }
 
 impl MyApp {
@@ -62,26 +61,26 @@ impl eframe::App for MyApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.vertical_centered(|ui| {
 
-                ui.label("Dossier pre-mise a jour");
+                ui.label("Dossier pré-mise-à-jour");
                 if ui.button("Parcourir les fichiers...").clicked()
                     && let Some(path) = rfd::FileDialog::new().pick_folder() {
                     self.original = Some(path)
                 }
                 if let Some(ref original) = self.original {
                     ui.horizontal(|ui| {
-                        ui.label("Dossier selectionne : ");
+                        ui.label("Dossier séléctionné : ");
                         ui.monospace(original.display().to_string());
                     });
                 }
 
-                ui.label("Dossier contenant les fichiers mis a jour");
+                ui.label("Dossier contenant les fichiers mise-à-jour");
                 if ui.button("Parcourir les fichiers...").clicked()
                     && let Some(path) = rfd::FileDialog::new().pick_folder() {
                     self.new = Some(path)
                 }
                 if let Some(ref new) = self.new {
                     ui.horizontal(|ui| {
-                        ui.label("Dossier selectionne : ");
+                        ui.label("Dossier séléctionné : ");
                         ui.monospace(new.display().to_string());
                     });
                 }
@@ -93,14 +92,14 @@ impl eframe::App for MyApp {
                 }
                 if let Some(ref result) = self.result {
                     ui.horizontal(|ui| {
-                        ui.label("Fichier a creer : ");
+                        ui.label("Fichier à créer : ");
                         ui.monospace(result.display().to_string());
                     });
                 }
 
                 if 
                     let Some(((original, new), result)) = self.original.as_ref().zip(self.new.as_ref()).zip(self.result.as_ref())
-                    && ui.button("Creer le patch").clicked()
+                    && ui.button("Créer le patch").clicked()
                 {
                     let ctx = ui.ctx().clone();
                     let (tx, rx) = mpsc::channel();
@@ -109,15 +108,15 @@ impl eframe::App for MyApp {
                     let new = new.clone();
                     let result = result.clone();
                     std::thread::spawn(move || {
-                        let tempfile = tempdir().unwrap();
-                        let _ = thl_patcher::diff(&original, &new, tempfile.path(), |x| {
+                        let tar_archive = File::create(&result).unwrap();
+                        let encoder = XzEncoder::new(tar_archive, 9);
+                        let mut tar = tar::Builder::new(BufWriter::new(encoder));
+
+                        let _ = thl_patcher::diff_in_tar(&original, &new, &mut tar, |x| {
                             let _ = tx.send(x);
                             ctx.request_repaint();
                         });
-                        let tar_archive = File::create(&result).unwrap();
-                        let encoder = GzEncoder::new(BufWriter::new(tar_archive), Compression::best());
-                        let mut tar = tar::Builder::new(encoder);
-                        tar.append_dir_all("", tempfile.path()).unwrap();
+
                         tar.finish().unwrap();
                     });
                 }

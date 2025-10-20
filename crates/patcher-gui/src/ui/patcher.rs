@@ -1,6 +1,6 @@
 use std::{
     io::{self, Cursor},
-    path::Path,
+    path::{Path, PathBuf},
     sync::mpsc::{self, Receiver},
 };
 
@@ -9,11 +9,11 @@ use crate::{
     transmitter_reloader::TransmitterReloader,
 };
 use eframe::egui::{Color32, ProgressBar, Ui};
-use flate2::read::GzDecoder;
 use tar::Archive;
 use tempfile::tempdir;
 use thiserror::Error;
 use walkdir::WalkDir;
+use xz2::read::XzDecoder;
 
 #[derive(Debug)]
 enum Version {
@@ -25,7 +25,7 @@ enum Version {
 #[derive(Debug)]
 enum Progress {
     NotUpdating,
-    Updating { versions: f32, files: f32 },
+    Updating { versions: f32, current: Option<PathBuf> },
     Updated,
 }
 
@@ -165,23 +165,24 @@ impl Patcher {
 
             transmit(Action::UpdateProgress(Progress::Updating {
                 versions,
-                files: 0.,
+                current: None,
             }));
             // A temporary directory where patched files go
             let temp_dir = tempdir().unwrap();
             // A temporary directory to extract the archive
-            let patch = tempdir().unwrap();
+            // let patch = tempdir().unwrap();
 
             let update_link = version.update_link.as_ref().unwrap();
             let archive_content = minreq::get(update_link).send().unwrap().into_bytes();
-            let decoder = GzDecoder::new(Cursor::new(archive_content));
+            let decoder = XzDecoder::new(Cursor::new(archive_content));
             let mut archive = Archive::new(decoder);
-            archive.unpack(patch.path()).unwrap();
+            // archive.unpack("test");
+            // archive.unpack(patch.path()).unwrap();
 
-            thl_patcher::patch(&original, &patch.path(), &temp_dir.path(), |s| {
+            let _ = thl_patcher::patch_from_tar(&original, &mut archive, &temp_dir.path(), |s| {
                 transmit(Action::UpdateProgress(Progress::Updating {
                     versions,
-                    files: s.done as f32 / s.out_of as f32,
+                    current: Some(s.path),
                 }));
             });
 
@@ -227,9 +228,11 @@ impl Patcher {
 
     fn progress_bars(&mut self, ui: &mut Ui) {
         match self.progress {
-            Progress::Updating { files, versions } => {
+            Progress::Updating { ref current, versions } => {
                 ui.add(ProgressBar::new(versions).show_percentage());
-                ui.add(ProgressBar::new(files).show_percentage());
+                if let Some(current) = current.as_ref() {
+                    ui.code(format!("Application du patch sur {}", current.display()));
+                }
             }
             Progress::NotUpdating => (),
             Progress::Updated => {

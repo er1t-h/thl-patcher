@@ -1,8 +1,10 @@
 [workspace]
-members = ["crates/patch-creator",
+members = [
+    "crates/patch-creator",
     "crates/patcher-gui",
     "crates/patcher-lib",
 ]
+resolver = "3"
 
 [profile.production]
 inherits = "release"
