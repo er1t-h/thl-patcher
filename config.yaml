@@ -1,9 +1,6 @@
-window_name: "Patch FR - The Hundred Line - Last Defense Academy"
-source: "https://raw.githubusercontent.com/er1t-h/thl-patch-fr/refs/heads/main/source.yaml"
+window_name: "Patch Test"
+source: "http://localhost:8000/source.yaml"
 default_paths:
-  - target_os: windows
-    possible_paths:
-      - "C:\\Program Files (x86)\\Steam\\steamapps\\common\\The Hundred Line -Last Defense Academy-"
   - target_os: linux
     possible_paths:
-      - "~/.steam/debian-installation/steamapps/common/The Hundred Line -Last Defense Academy-"
+      - "old"

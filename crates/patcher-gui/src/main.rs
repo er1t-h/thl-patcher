@@ -1,4 +1,10 @@
+#![warn(clippy::unwrap_used)]
+
+use std::{fs::File, io, process::ExitCode, sync::Arc};
+
 use eframe::egui;
+use tracing::level_filters::LevelFilter;
+use tracing_subscriber::fmt::MakeWriter;
 
 use crate::{
     structures::{config::PatcherConfig, source::Source},
@@ -20,7 +26,24 @@ fn get_config() -> PatcherConfig {
     }
 }
 
-fn main() {
+fn open_log() -> File {
+    let file = File::options()
+        .append(true)
+        .create(true)
+        .open("logs.txt");
+    match file {
+        Ok(x) => x,
+        Err(e) => panic!("couldnt open logs.txt: {e}"),
+    }
+}
+
+fn main() -> ExitCode {
+    tracing_subscriber::fmt()
+        .with_ansi(false)
+        .with_writer(open_log)
+        .with_max_level(LevelFilter::WARN)
+        .init();
+
     let mut config = get_config();
 
     let options = eframe::NativeOptions {
@@ -29,12 +52,18 @@ fn main() {
             .with_drag_and_drop(true),
         ..Default::default()
     };
-    eframe::run_native(
+    let res = eframe::run_native(
         &std::mem::take(&mut config.window_name),
         options,
         Box::new(|_cc| Ok(Box::new(MyApp::new(config)))),
-    )
-    .unwrap();
+    );
+    match res {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            tracing::error!("couldn't initialize the window: {e}");
+            ExitCode::FAILURE
+        }
+    }
 }
 
 struct MyApp {
@@ -52,8 +81,11 @@ impl MyApp {
             Ok(source) => MyApp {
                 app_screen: AppScreen::Patcher(Patcher::new(config, source)),
             },
-            Err(e) => MyApp {
-                app_screen: AppScreen::source_error(e),
+            Err(e) => {
+                tracing::error!("error while fetching source: {}", e);
+                MyApp {
+                    app_screen: AppScreen::source_error(e),
+                }
             },
         }
     }

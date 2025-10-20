@@ -8,7 +8,7 @@ use crate::{
     structures::{config::PatcherConfig, source::Source},
     transmitter_reloader::TransmitterReloader,
 };
-use eframe::egui::{Color32, ProgressBar, Ui};
+use eframe::egui::{Color32, ProgressBar, RichText, Ui};
 use tar::Archive;
 use tempfile::tempdir;
 use thiserror::Error;
@@ -25,7 +25,10 @@ enum Version {
 #[derive(Debug)]
 enum Progress {
     NotUpdating,
-    Updating { versions: f32, current: Option<PathBuf> },
+    Updating {
+        versions: f32,
+        current: Option<PathBuf>,
+    },
     Updated,
 }
 
@@ -35,6 +38,7 @@ pub struct Patcher {
     version: Version,
     selected_path: Option<String>,
     receiver: Option<Receiver<Action>>,
+    download_error: Option<DownloadAndPatchError>,
 }
 
 #[derive(Debug)]
@@ -42,6 +46,7 @@ enum Action {
     UpdateProgress(Progress),
     UpVersion,
     FinishUpdate,
+    DownloadAndPatchError(DownloadAndPatchError)
 }
 
 #[derive(Error, Debug)]
@@ -52,6 +57,20 @@ pub enum GetVersionError {
     VersionNotFound,
     #[error("missing path")]
     MissingPath,
+}
+
+#[derive(Error, Debug)]
+pub enum DownloadAndPatchError {
+    #[error("io error: {0}")]
+    Io(#[from] io::Error),
+    #[error("io error: {0}")]
+    WalkDir(#[from] walkdir::Error),
+    #[error("minreq error: {0}")]
+    Minreq(#[from] minreq::Error),
+    #[error("patcher error: {0}")]
+    PatchError(#[from] thl_patcher::PatchError),
+    #[error("no update link indicated")]
+    NoUpdateLink
 }
 
 impl Patcher {
@@ -82,6 +101,7 @@ impl Patcher {
             progress: Progress::NotUpdating,
             selected_path: config.get_default_path(),
             receiver: None,
+            download_error: None,
         };
         if patcher.selected_path.is_some() {
             patcher.refresh_current_version();
@@ -102,6 +122,10 @@ impl Patcher {
                     }
                     Action::FinishUpdate => {
                         self.progress = Progress::Updated;
+                        stop_receive = true;
+                    }
+                    Action::DownloadAndPatchError(error) => {
+                        self.download_error = Some(error);
                         stop_receive = true;
                     }
                 }
@@ -157,7 +181,7 @@ impl Patcher {
         mut transmit: impl FnMut(Action),
         original: &Path,
         new: &[crate::structures::source::Version],
-    ) {
+    ) -> Result<(), DownloadAndPatchError> {
         let number_of_patch = new.len() as f32;
 
         for (i, version) in new.into_iter().enumerate() {
@@ -168,36 +192,36 @@ impl Patcher {
                 current: None,
             }));
             // A temporary directory where patched files go
-            let temp_dir = tempdir().unwrap();
-            // A temporary directory to extract the archive
-            // let patch = tempdir().unwrap();
+            let temp_dir = tempdir()?;
 
-            let update_link = version.update_link.as_ref().unwrap();
-            let archive_content = minreq::get(update_link).send().unwrap().into_bytes();
+            let update_link = version.update_link.as_ref().ok_or(DownloadAndPatchError::NoUpdateLink)?;
+            let archive_content = minreq::get(update_link).send()?.into_bytes();
             let decoder = XzDecoder::new(Cursor::new(archive_content));
             let mut archive = Archive::new(decoder);
-            // archive.unpack("test");
-            // archive.unpack(patch.path()).unwrap();
 
-            let _ = thl_patcher::patch_from_tar(&original, &mut archive, &temp_dir.path(), |s| {
+            thl_patcher::patch_from_tar(&original, &mut archive, &temp_dir.path(), |s| {
                 transmit(Action::UpdateProgress(Progress::Updating {
                     versions,
                     current: Some(s.path),
                 }));
-            });
+            })?;
 
             for file in WalkDir::new(temp_dir.path()) {
-                let file = file.unwrap();
+                let file = file?;
                 if !file.file_type().is_file() {
                     continue;
                 }
                 let path = file.into_path();
-                let suffix = path.strip_prefix(temp_dir.path()).unwrap();
-                std::fs::copy(&path, original.join(suffix)).unwrap();
+                let suffix = match path.strip_prefix(temp_dir.path()) {
+                    Ok(x) => x,
+                    Err(_) => unreachable!("path is always a child of temp_dir"),
+                };
+                std::fs::copy(&path, original.join(suffix))?;
             }
             transmit(Action::UpVersion);
         }
         transmit(Action::FinishUpdate);
+        Ok(())
     }
 
     fn apply_patch(&mut self, ui: &mut Ui) {
@@ -214,13 +238,20 @@ impl Patcher {
                 let transmitter = TransmitterReloader::new(tx, ui.ctx().clone());
                 self.receiver = Some(rx);
                 std::thread::spawn(move || {
-                    Self::download_and_patch(
+                    let res = Self::download_and_patch(
                         |message| {
                             let _ = transmitter.send(message);
                         },
                         Path::new(&old),
                         &versions_to_install,
                     );
+                    match res {
+                        Ok(()) => (),
+                        Err(e) => {
+                            tracing::error!("error while downloading the patch or applying it: {e}");
+                            let _ = transmitter.send(Action::DownloadAndPatchError(e));
+                        }
+                    }
                 });
             }
         }
@@ -228,7 +259,10 @@ impl Patcher {
 
     fn progress_bars(&mut self, ui: &mut Ui) {
         match self.progress {
-            Progress::Updating { ref current, versions } => {
+            Progress::Updating {
+                ref current,
+                versions,
+            } => {
                 ui.add(ProgressBar::new(versions).show_percentage());
                 if let Some(current) = current.as_ref() {
                     ui.code(format!("Application du patch sur {}", current.display()));
@@ -238,6 +272,12 @@ impl Patcher {
             Progress::Updated => {
                 ui.label("Mise à jour complétée avec succès !");
             }
+        }
+    }
+
+    fn display_error(&mut self, ui: &mut Ui) {
+        if let Some(ref error) = self.download_error {
+            ui.code(RichText::new(error.to_string()).color(Color32::RED));
         }
     }
 
@@ -251,6 +291,7 @@ impl Patcher {
             self.file_selector(ui);
             self.apply_patch(ui);
             self.progress_bars(ui);
+            self.display_error(ui);
         });
     }
 }

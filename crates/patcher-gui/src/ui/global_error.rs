@@ -1,18 +1,12 @@
 use eframe::egui::{Color32, RichText, Ui};
+use thiserror::Error;
 
+#[derive(Debug, Error)]
 pub enum GlobalErrorType {
-    SourceNotFound(minreq::Error),
-    SourceFormatError(serde_yaml::Error),
-}
-impl From<minreq::Error> for GlobalErrorType {
-    fn from(value: minreq::Error) -> Self {
-        Self::SourceNotFound(value)
-    }
-}
-impl From<serde_yaml::Error> for GlobalErrorType {
-    fn from(value: serde_yaml::Error) -> Self {
-        Self::SourceFormatError(value)
-    }
+    #[error("source not found: {0}")]
+    SourceNotFound(#[from] minreq::Error),
+    #[error("source format error: {0}")]
+    SourceFormatError(#[from] serde_yaml::Error),
 }
 
 pub struct SourceError {

@@ -35,9 +35,11 @@ impl Source {
                         &mut hasher,
                     )?;
                     let mut buffer = [0; 64];
-                    base16ct::lower::encode(&hasher.finalize(), &mut buffer).unwrap();
-                    already_calculated.insert(&determinant.file, buffer);
-                    already_calculated.get(&determinant.file.as_str()).unwrap()
+                    match base16ct::lower::encode(&hasher.finalize(), &mut buffer) {
+                        Ok(_) => (),
+                        Err(e) => unreachable!("64-byte should always be enough: {e}"),
+                    }
+                    already_calculated.entry(&determinant.file).or_insert(buffer)
                 };
 
                 if hash != determinant.sha256.as_bytes() {
@@ -57,7 +59,10 @@ impl Source {
             .unwrap_or_default()
             .1;
 
-        if let Some(pos) = versions_to_install.iter().position(|x| x.update_link.is_none()) {
+        if let Some(pos) = versions_to_install
+            .iter()
+            .position(|x| x.update_link.is_none())
+        {
             versions_to_install.split_at(pos).0
         } else {
             versions_to_install
