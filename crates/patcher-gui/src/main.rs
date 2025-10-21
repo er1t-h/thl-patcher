@@ -1,10 +1,9 @@
 #![warn(clippy::unwrap_used)]
 
-use std::{fs::File, io, process::ExitCode, sync::Arc};
+use std::{fs::File, process::ExitCode};
 
 use eframe::egui;
 use tracing::level_filters::LevelFilter;
-use tracing_subscriber::fmt::MakeWriter;
 
 use crate::{
     structures::{config::PatcherConfig, source::Source},
@@ -13,7 +12,6 @@ use crate::{
 
 mod error;
 mod structures;
-mod transmitter_reloader;
 mod ui;
 
 fn get_config() -> PatcherConfig {

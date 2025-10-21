@@ -4,10 +4,7 @@ use std::{
     sync::mpsc::{self, Receiver},
 };
 
-use crate::{
-    structures::{config::PatcherConfig, source::Source},
-    transmitter_reloader::TransmitterReloader,
-};
+use crate::structures::{config::PatcherConfig, source::Source};
 use eframe::egui::{Color32, ProgressBar, RichText, Ui};
 use tar::Archive;
 use tempfile::tempdir;
@@ -235,12 +232,13 @@ impl Patcher {
                     .to_vec();
                 let old = old.clone();
                 let (tx, rx) = mpsc::channel();
-                let transmitter = TransmitterReloader::new(tx, ui.ctx().clone());
+                let ctx = ui.ctx().clone();
                 self.receiver = Some(rx);
                 std::thread::spawn(move || {
                     let res = Self::download_and_patch(
                         |message| {
-                            let _ = transmitter.send(message);
+                            let _ = tx.send(message);
+                            ctx.request_repaint();
                         },
                         Path::new(&old),
                         &versions_to_install,
@@ -249,7 +247,7 @@ impl Patcher {
                         Ok(()) => (),
                         Err(e) => {
                             tracing::error!("error while downloading the patch or applying it: {e}");
-                            let _ = transmitter.send(Action::DownloadAndPatchError(e));
+                            let _ = tx.send(Action::DownloadAndPatchError(e));
                         }
                     }
                 });
