@@ -3,13 +3,12 @@
 use std::{
     fs::File,
     io::{self, BufWriter},
-    path::{Path, PathBuf},
-    sync::mpsc::{self, Receiver, Sender},
+    sync::mpsc::{self, Receiver},
 };
 
 mod file_selectors;
 
-use eframe::egui::{self, Color32, ProgressBar, RichText, Ui};
+use eframe::egui::{self, Color32, ProgressBar, RichText};
 use xz2::write::XzEncoder;
 
 use crate::file_selectors::{FileSelectors, FileTriplet};
@@ -90,7 +89,7 @@ impl eframe::App for MyApp {
             ui.vertical_centered(|ui| {
                 let can_modify = match self.progress {
                     None => true,
-                    Some(x) if x == 1. => true,
+                    Some(1.) => true,
                     Some(_) => false
                 };
                 ui.add_enabled_ui(can_modify, |ui| {

@@ -15,7 +15,7 @@ mod diff {
     const CHUNK_SIZE: usize = 400_000_000;
 
     fn count_files(path: &Path) -> usize {
-        WalkDir::new(&path)
+        WalkDir::new(path)
             .into_iter()
             .filter(|file| file.as_ref().is_ok_and(|entry| entry.file_type().is_file()))
             .count()
@@ -51,13 +51,13 @@ mod diff {
                 out_of: count_files(new),
             };
 
-            for file in WalkDir::new(&new) {
+            for file in WalkDir::new(new) {
                 let file = file?;
                 if !file.file_type().is_file() {
                     continue;
                 }
                 let new_file_path = file.into_path();
-                let file_relative_path = match new_file_path.strip_prefix(&new) {
+                let file_relative_path = match new_file_path.strip_prefix(new) {
                     Ok(file_relative_path) => file_relative_path,
                     Err(_) => unreachable!("new_file_path is always a child of new"),
                 };
@@ -118,7 +118,7 @@ mod patch {
         mut update: impl FnMut(CurrentPatchingPath),
     ) -> Result<(), PatchError> {
         if old.is_dir() && (destination.is_dir() || !destination.exists()) {
-            std::fs::create_dir_all(&destination)?;
+            std::fs::create_dir_all(destination)?;
             for file in new.entries()? {
                 let file = file?;
                 (update)(CurrentPatchingPath {

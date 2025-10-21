@@ -17,6 +17,7 @@ enum Version {
     NotFetched,
     NotFound,
     Found(usize),
+    IoError(io::Error)
 }
 
 #[derive(Debug)]
@@ -79,7 +80,7 @@ impl Patcher {
                 .ok_or(GetVersionError::MissingPath)?;
             let version = self
                 .source
-                .get_current_version(&Path::new(path))?
+                .get_current_version(Path::new(path))?
                 .ok_or(GetVersionError::VersionNotFound)?;
             Ok(version)
         })();
@@ -87,11 +88,11 @@ impl Patcher {
             Ok(x) => Version::Found(x),
             Err(GetVersionError::VersionNotFound) => Version::NotFound,
             Err(GetVersionError::MissingPath) => Version::NotFetched,
-            Err(GetVersionError::Io(x)) => panic!("{x}"),
+            Err(GetVersionError::Io(err)) => Version::IoError(err),
         };
     }
 
-    pub fn new(config: PatcherConfig, source: Source) -> Self {
+    pub fn new(config: &PatcherConfig, source: Source) -> Self {
         let mut patcher = Self {
             source,
             version: Version::NotFetched,
@@ -114,7 +115,7 @@ impl Patcher {
                     Action::UpdateProgress(x) => self.progress = x,
                     Action::UpVersion => {
                         if let Version::Found(ref mut v) = self.version {
-                            *v += 1
+                            *v += 1;
                         }
                     }
                     Action::FinishUpdate => {
@@ -138,7 +139,7 @@ impl Patcher {
             Version::NotFetched => (),
             Version::NotFound => {
                 ui.colored_label(Color32::RED, "Votre version n'a pas été trouvée.");
-                ui.colored_label(Color32::RED, "Tentez de verifier l'intégrité des fichiers.");
+                ui.colored_label(Color32::RED, "Tentez de vérifier l'intégrité des fichiers.");
                 ui.colored_label(
                     Color32::RED,
                     "Si cela ne fonctionne pas, attendez une mise à jour.",
@@ -146,6 +147,11 @@ impl Patcher {
                 if ui.button("Revérifier").clicked() {
                     self.refresh_current_version();
                 }
+            }
+            Version::IoError(ref x) => {
+                ui.colored_label(Color32::RED, "Une erreur I/O est survenue.");
+                ui.colored_label(Color32::RED, "Il est probable que l'un des fichiers permettant l'évaluation de la version était absent.");
+                ui.code(RichText::new(x.to_string()).color(Color32::RED));
             }
             Version::Found(version) => {
                 ui.label(format!(
@@ -156,7 +162,7 @@ impl Patcher {
                     ui.label("Vous avez la dernière version !");
                 }
             }
-        };
+        }
     }
 
     fn file_selector(&mut self, ui: &mut Ui) {
@@ -166,7 +172,7 @@ impl Patcher {
         {
             self.progress = Progress::NotUpdating;
             self.selected_path = Some(path.display().to_string());
-            let _ = self.refresh_current_version();
+            self.refresh_current_version();
         }
         if let Some(old) = &self.selected_path {
             ui.label("Dossier séléctionné : ");
@@ -174,6 +180,7 @@ impl Patcher {
         }
     }
 
+    #[allow(clippy::cast_precision_loss)]
     fn download_and_patch(
         mut transmit: impl FnMut(Action),
         original: &Path,
@@ -181,7 +188,7 @@ impl Patcher {
     ) -> Result<(), DownloadAndPatchError> {
         let number_of_patch = new.len() as f32;
 
-        for (i, version) in new.into_iter().enumerate() {
+        for (i, version) in new.iter().enumerate() {
             let versions = i as f32 / number_of_patch;
 
             transmit(Action::UpdateProgress(Progress::Updating {
@@ -196,7 +203,7 @@ impl Patcher {
             let decoder = XzDecoder::new(Cursor::new(archive_content));
             let mut archive = Archive::new(decoder);
 
-            thl_patcher::patch_from_tar(&original, &mut archive, &temp_dir.path(), |s| {
+            thl_patcher::patch_from_tar(original, &mut archive, temp_dir.path(), |s| {
                 transmit(Action::UpdateProgress(Progress::Updating {
                     versions,
                     current: Some(s.path),
@@ -209,11 +216,17 @@ impl Patcher {
                     continue;
                 }
                 let path = file.into_path();
-                let suffix = match path.strip_prefix(temp_dir.path()) {
-                    Ok(x) => x,
-                    Err(_) => unreachable!("path is always a child of temp_dir"),
+                let Ok(suffix) = path.strip_prefix(temp_dir.path()) else {
+                    unreachable!("path is always a child of temp_dir");
                 };
-                std::fs::copy(&path, original.join(suffix))?;
+                let destination = original.join(suffix);
+                match std::fs::rename(&path, &destination) {
+                    Ok(()) => (),
+                    Err(e) if e.kind() == io::ErrorKind::CrossesDevices => {
+                        std::fs::copy(&path, original.join(suffix))?;
+                    }
+                    Err(e) => Err(e)?,
+                }
             }
             transmit(Action::UpVersion);
         }
@@ -224,8 +237,8 @@ impl Patcher {
     fn apply_patch(&mut self, ui: &mut Ui) {
         if let Some(ref old) = self.selected_path
             && let Version::Found(current_version) = self.version
+            && ui.button("Appliquer le Patch").clicked()
         {
-            if ui.button("Appliquer le Patch").clicked() {
                 let versions_to_install = self
                     .source
                     .get_versions_to_install(current_version)
@@ -251,11 +264,10 @@ impl Patcher {
                         }
                     }
                 });
-            }
         }
     }
 
-    fn progress_bars(&mut self, ui: &mut Ui) {
+    fn progress_bars(&self, ui: &mut Ui) {
         match self.progress {
             Progress::Updating {
                 ref current,
@@ -273,7 +285,7 @@ impl Patcher {
         }
     }
 
-    fn display_error(&mut self, ui: &mut Ui) {
+    fn display_error(&self, ui: &mut Ui) {
         if let Some(ref error) = self.download_error {
             ui.code(RichText::new(error.to_string()).color(Color32::RED));
         }

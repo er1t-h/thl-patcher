@@ -1,6 +1,7 @@
-#![warn(clippy::unwrap_used)]
+#![windows_subsystem = "windows"]
+#![warn(clippy::panic, clippy::unwrap_used, clippy::all, clippy::pedantic, clippy::nursery)]
 
-use std::{fs::File, process::ExitCode};
+use std::{fs::File, io::Write, process::ExitCode};
 
 use eframe::egui;
 use tracing::level_filters::LevelFilter;
@@ -24,14 +25,14 @@ fn get_config() -> PatcherConfig {
     }
 }
 
-fn open_log() -> File {
+fn open_log() -> Box<dyn Write> {
     let file = File::options()
         .append(true)
         .create(true)
         .open("logs.txt");
     match file {
-        Ok(x) => x,
-        Err(e) => panic!("couldnt open logs.txt: {e}"),
+        Ok(x) => Box::new(x),
+        Err(_) => Box::new(std::io::sink()),
     }
 }
 
@@ -53,7 +54,7 @@ fn main() -> ExitCode {
     let res = eframe::run_native(
         &std::mem::take(&mut config.window_name),
         options,
-        Box::new(|_cc| Ok(Box::new(MyApp::new(config)))),
+        Box::new(|_cc| Ok(Box::new(MyApp::new(&config)))),
     );
     match res {
         Ok(()) => ExitCode::SUCCESS,
@@ -69,19 +70,19 @@ struct MyApp {
 }
 
 impl MyApp {
-    fn new(config: PatcherConfig) -> Self {
+    fn new(config: &PatcherConfig) -> Self {
         let source: Result<Source, GlobalErrorType> = (|| {
             let body = minreq::get(&config.source).send()?;
-            Ok(serde_yaml::from_slice(&body.as_bytes())?)
+            Ok(serde_yaml::from_slice(body.as_bytes())?)
         })();
 
         match source {
-            Ok(source) => MyApp {
+            Ok(source) => Self {
                 app_screen: AppScreen::Patcher(Patcher::new(config, source)),
             },
             Err(e) => {
                 tracing::error!("error while fetching source: {}", e);
-                MyApp {
+                Self {
                     app_screen: AppScreen::source_error(e),
                 }
             },

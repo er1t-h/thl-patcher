@@ -25,13 +25,22 @@ impl Source {
     pub fn get_current_version(&self, path: &Path) -> Result<Option<usize>, std::io::Error> {
         let mut already_calculated: HashMap<&str, [u8; 64]> = HashMap::new();
         'version: for (i, version) in self.versions.iter().enumerate().rev() {
+            tracing::trace!("checking version `{}`", version.name);
             for determinant in &version.determinants {
                 let hash = if let Some(x) = already_calculated.get(determinant.file.as_str()) {
                     x
                 } else {
                     let mut hasher = Sha256::new();
+                    let path = path.join(&determinant.file);
+                    let file = match File::open(&path) {
+                        Ok(f) => f,
+                        Err(e) => {
+                            tracing::trace!("error while opening file `{}`: `{e}`", determinant.file);
+                            continue 'version
+                        }
+                    };
                     std::io::copy(
-                        &mut BufReader::new(File::open(path.join(&determinant.file))?),
+                        &mut BufReader::new(file),
                         &mut hasher,
                     )?;
                     let mut buffer = [0; 64];
@@ -43,6 +52,7 @@ impl Source {
                 };
 
                 if hash != determinant.sha256.as_bytes() {
+                    tracing::trace!("sha256 mismatch for file `{}`", determinant.file);
                     continue 'version;
                 }
             }
@@ -59,13 +69,9 @@ impl Source {
             .unwrap_or_default()
             .1;
 
-        if let Some(pos) = versions_to_install
+        versions_to_install
             .iter()
             .position(|x| x.update_link.is_none())
-        {
-            versions_to_install.split_at(pos).0
-        } else {
-            versions_to_install
-        }
+            .map_or(versions_to_install, |pos| versions_to_install.split_at(pos).0)
     }
 }

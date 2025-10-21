@@ -14,7 +14,7 @@ pub struct SourceError {
 }
 
 impl SourceError {
-    pub fn update(&mut self, ui: &mut Ui) {
+    pub fn update(&self, ui: &mut Ui) {
         let e = match &self.error {
             GlobalErrorType::SourceNotFound(e) => {
                 ui.colored_label(Color32::RED, "La source spécifiée n'a pas été trouvée.");

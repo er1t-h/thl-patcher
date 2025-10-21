@@ -7,7 +7,7 @@ pub enum AppScreen {
 }
 
 impl AppScreen {
-    pub fn source_error(error: global_error::GlobalErrorType) -> Self {
+    pub const fn source_error(error: global_error::GlobalErrorType) -> Self {
         Self::SourceError(global_error::SourceError { error })
     }
 }
