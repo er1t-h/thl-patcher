@@ -12,7 +12,6 @@ use eframe::egui::{self, Color32, ProgressBar, RichText};
 use xz2::write::XzEncoder;
 
 use crate::file_selectors::{FileSelectors, FileTriplet};
-
 fn main() {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -37,7 +36,7 @@ struct MyApp {
     file_selector: FileSelectors,
     progress: Option<f32>,
     rx: Option<Receiver<Message>>,
-    error: Option<io::Error>
+    error: Option<io::Error>,
 }
 
 impl MyApp {
@@ -46,7 +45,7 @@ impl MyApp {
             file_selector: FileSelectors::new(),
             progress: None,
             rx: None,
-            error: None
+            error: None,
         }
     }
 }
@@ -79,7 +78,7 @@ impl MyApp {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Updated {
     Yes,
-    No
+    No,
 }
 
 impl eframe::App for MyApp {
@@ -90,7 +89,7 @@ impl eframe::App for MyApp {
                 let can_modify = match self.progress {
                     None => true,
                     Some(1.) => true,
-                    Some(_) => false
+                    Some(_) => false,
                 };
                 ui.add_enabled_ui(can_modify, |ui| {
                     if self.file_selector.display(ui) == Updated::Yes {
@@ -98,7 +97,11 @@ impl eframe::App for MyApp {
                     }
                 });
 
-                if let Some(FileTriplet { original, new, result }) = self.file_selector.triplet()
+                if let Some(FileTriplet {
+                    original,
+                    new,
+                    result,
+                }) = self.file_selector.triplet()
                     && ui.button("Créer le patch").clicked()
                 {
                     let ctx = ui.ctx().clone();
@@ -112,12 +115,12 @@ impl eframe::App for MyApp {
                             let tar_archive = File::create(&result)?;
                             let encoder = XzEncoder::new(tar_archive, 9);
                             let mut tar = tar::Builder::new(BufWriter::new(encoder));
-    
+
                             let _ = thl_patcher::diff_in_tar(&original, &new, &mut tar, |x| {
                                 let _ = tx.send(Message::DiffState(x));
                                 ctx.request_repaint();
                             });
-    
+
                             tar.finish()?;
                             Ok(())
                         })();
@@ -136,7 +139,10 @@ impl eframe::App for MyApp {
                 }
 
                 if let Some(ref error) = self.error {
-                    ui.code(RichText::new(format!("Erreur en créant le patch : {error}")).color(Color32::RED));
+                    ui.code(
+                        RichText::new(format!("Erreur en créant le patch : {error}"))
+                            .color(Color32::RED),
+                    );
                 }
             });
         });

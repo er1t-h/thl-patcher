@@ -77,7 +77,7 @@ impl FileSelectors {
         Some(FileTriplet {
             original: self.original.as_deref()?,
             new: self.new.as_deref()?,
-            result: self.result.as_deref()?
+            result: self.result.as_deref()?,
         })
     }
 }
