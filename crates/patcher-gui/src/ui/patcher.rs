@@ -1,11 +1,9 @@
 use std::{
-    io::{self, Cursor},
-    path::{Path, PathBuf},
-    sync::mpsc::{self, Receiver},
+    collections::BTreeSet, io::{self, Cursor}, path::{Path, PathBuf}, sync::mpsc::{self, Receiver}
 };
 
 use crate::structures::{config::PatcherConfig, source::Source};
-use eframe::egui::{Color32, ProgressBar, RichText, Ui};
+use eframe::egui::{Color32, ComboBox, ProgressBar, RichText, Ui};
 use either::Either;
 use tar::Archive;
 use tempfile::tempdir;
@@ -35,6 +33,8 @@ pub struct Patcher {
     source: Source,
     progress: Progress,
     version: Version,
+    reachable: Option<BTreeSet<usize>>,
+    selected_version: usize,
     selected_path: Option<String>,
     receiver: Option<Receiver<Action>>,
     download_error: Option<DownloadAndPatchError>,
@@ -43,7 +43,7 @@ pub struct Patcher {
 #[derive(Debug)]
 enum Action {
     UpdateProgress(Progress),
-    UpVersion,
+    ToVersion(usize),
     FinishUpdate,
     DownloadAndPatchError(DownloadAndPatchError),
 }
@@ -68,8 +68,6 @@ pub enum DownloadAndPatchError {
     Minreq(#[from] minreq::Error),
     #[error("patcher error: {0}")]
     PatchError(#[from] thl_patcher::PatchError),
-    #[error("no update link indicated")]
-    NoUpdateLink,
 }
 
 impl Patcher {
@@ -86,7 +84,10 @@ impl Patcher {
             Ok(version)
         })();
         self.version = match version {
-            Ok(x) => Version::Found(x),
+            Ok(x) => {
+                self.reachable = Some(self.source.get_reachable_versions(x));
+                Version::Found(x)
+            }
             Err(GetVersionError::VersionNotFound) => Version::NotFound,
             Err(GetVersionError::MissingPath) => Version::NotFetched,
             Err(GetVersionError::Io(err)) => Version::IoError(err),
@@ -99,8 +100,10 @@ impl Patcher {
             version: Version::NotFetched,
             progress: Progress::NotUpdating,
             selected_path: config.get_default_path(),
+            selected_version: 0,
             receiver: None,
             download_error: None,
+            reachable: None
         };
         if patcher.selected_path.is_some() {
             patcher.refresh_current_version();
@@ -114,9 +117,9 @@ impl Patcher {
             while let Ok(action) = rx.try_recv() {
                 match action {
                     Action::UpdateProgress(x) => self.progress = x,
-                    Action::UpVersion => {
+                    Action::ToVersion(x) => {
                         if let Version::Found(ref mut v) = self.version {
-                            *v += 1;
+                            *v = x;
                         }
                     }
                     Action::FinishUpdate => {
@@ -185,13 +188,14 @@ impl Patcher {
     fn download_and_patch(
         mut transmit: impl FnMut(Action),
         original: &Path,
-        new: &[crate::structures::source::Version],
+        new: &[crate::structures::source::VersionPath],
     ) -> Result<(), DownloadAndPatchError> {
-        let number_of_patch = new.len() as f32;
+        let number_of_patch = (new.len() - 1) as f32;
 
         for (i, version) in new.iter().enumerate() {
+            transmit(Action::ToVersion(version.index));
             let versions = i as f32 / number_of_patch;
-
+            
             transmit(Action::UpdateProgress(Progress::Updating {
                 versions,
                 current: None,
@@ -199,10 +203,11 @@ impl Patcher {
             // A temporary directory where patched files go
             let temp_dir = tempdir()?;
 
-            let update_link = version
+            let Some(update_link) = version
                 .update_link
-                .as_ref()
-                .ok_or(DownloadAndPatchError::NoUpdateLink)?;
+                .as_ref() else {
+                    break;
+                };
 
             let archive_content = minreq::get(update_link).send()?.into_bytes();
             let decoder = XzDecoder::new(Cursor::new(archive_content));
@@ -233,7 +238,6 @@ impl Patcher {
                     Err(e) => Err(e)?,
                 }
             }
-            transmit(Action::UpVersion);
         }
         transmit(Action::FinishUpdate);
         Ok(())
@@ -248,6 +252,10 @@ impl Patcher {
                 .source
                 .get_path(current_version, self.source.versions.len() - 1)
                 .unwrap();
+            let reachable = self.source.get_reachable_versions(current_version);
+            for reachable in reachable {
+                eprintln!("reachable: {}", &self.source.versions[reachable].name);
+            }
             let old = old.clone();
             let (tx, rx) = mpsc::channel();
             let ctx = ui.ctx().clone();
@@ -269,6 +277,15 @@ impl Patcher {
                     }
                 }
             });
+        }
+        if let Some(ref reachable) = self.reachable {
+            ComboBox::from_label("Version selectionnee")
+                .selected_text(self.source.versions[self.selected_version].name.as_str())
+                .show_ui(ui, |ui| {
+                    for &reachable in reachable {
+                        ui.selectable_value(&mut self.selected_version, reachable, self.source.versions[reachable].name.as_str());
+                    }
+                });
         }
     }
 
