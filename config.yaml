@@ -1,6 +1,0 @@
-window_name: "Patch Test"
-source: "http://localhost:8000/source.yaml"
-default_paths:
-  - target_os: linux
-    possible_paths:
-      - "old"
