@@ -1,5 +1,11 @@
 #![windows_subsystem = "windows"]
-#![warn(clippy::panic, clippy::unwrap_used, clippy::all, clippy::pedantic, clippy::nursery)]
+#![warn(
+    clippy::panic,
+    clippy::unwrap_used,
+    clippy::all,
+    clippy::pedantic,
+    clippy::nursery
+)]
 
 use std::{fs::File, io::Write, process::ExitCode};
 
@@ -26,10 +32,7 @@ fn get_config() -> PatcherConfig {
 }
 
 fn open_log() -> Box<dyn Write> {
-    let file = File::options()
-        .append(true)
-        .create(true)
-        .open("logs.txt");
+    let file = File::options().append(true).create(true).open("logs.txt");
     match file {
         Ok(x) => Box::new(x),
         Err(_) => Box::new(std::io::sink()),
@@ -85,7 +88,7 @@ impl MyApp {
                 Self {
                     app_screen: AppScreen::source_error(e),
                 }
-            },
+            }
         }
     }
 }

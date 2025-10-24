@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "crates/patch-creator",
+    "crates/patcher-cli",
     "crates/patcher-gui",
     "crates/patcher-lib",
 ]

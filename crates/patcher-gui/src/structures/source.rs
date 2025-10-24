@@ -35,20 +35,22 @@ impl Source {
                     let file = match File::open(&path) {
                         Ok(f) => f,
                         Err(e) => {
-                            tracing::trace!("error while opening file `{}`: `{e}`", determinant.file);
-                            continue 'version
+                            tracing::trace!(
+                                "error while opening file `{}`: `{e}`",
+                                determinant.file
+                            );
+                            continue 'version;
                         }
                     };
-                    std::io::copy(
-                        &mut BufReader::new(file),
-                        &mut hasher,
-                    )?;
+                    std::io::copy(&mut BufReader::new(file), &mut hasher)?;
                     let mut buffer = [0; 64];
                     match base16ct::lower::encode(&hasher.finalize(), &mut buffer) {
                         Ok(_) => (),
                         Err(e) => unreachable!("64-byte should always be enough: {e}"),
                     }
-                    already_calculated.entry(&determinant.file).or_insert(buffer)
+                    already_calculated
+                        .entry(&determinant.file)
+                        .or_insert(buffer)
                 };
 
                 if hash != determinant.sha256.as_bytes() {
@@ -72,6 +74,8 @@ impl Source {
         versions_to_install
             .iter()
             .position(|x| x.update_link.is_none())
-            .map_or(versions_to_install, |pos| versions_to_install.split_at(pos).0)
+            .map_or(versions_to_install, |pos| {
+                versions_to_install.split_at(pos).0
+            })
     }
 }

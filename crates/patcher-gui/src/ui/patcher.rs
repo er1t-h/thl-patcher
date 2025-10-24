@@ -17,7 +17,7 @@ enum Version {
     NotFetched,
     NotFound,
     Found(usize),
-    IoError(io::Error)
+    IoError(io::Error),
 }
 
 #[derive(Debug)]
@@ -44,7 +44,7 @@ enum Action {
     UpdateProgress(Progress),
     UpVersion,
     FinishUpdate,
-    DownloadAndPatchError(DownloadAndPatchError)
+    DownloadAndPatchError(DownloadAndPatchError),
 }
 
 #[derive(Error, Debug)]
@@ -68,7 +68,7 @@ pub enum DownloadAndPatchError {
     #[error("patcher error: {0}")]
     PatchError(#[from] thl_patcher::PatchError),
     #[error("no update link indicated")]
-    NoUpdateLink
+    NoUpdateLink,
 }
 
 impl Patcher {
@@ -198,7 +198,10 @@ impl Patcher {
             // A temporary directory where patched files go
             let temp_dir = tempdir()?;
 
-            let update_link = version.update_link.as_ref().ok_or(DownloadAndPatchError::NoUpdateLink)?;
+            let update_link = version
+                .update_link
+                .as_ref()
+                .ok_or(DownloadAndPatchError::NoUpdateLink)?;
             let archive_content = minreq::get(update_link).send()?.into_bytes();
             let decoder = XzDecoder::new(Cursor::new(archive_content));
             let mut archive = Archive::new(decoder);
@@ -239,31 +242,31 @@ impl Patcher {
             && let Version::Found(current_version) = self.version
             && ui.button("Appliquer le Patch").clicked()
         {
-                let versions_to_install = self
-                    .source
-                    .get_versions_to_install(current_version)
-                    .to_vec();
-                let old = old.clone();
-                let (tx, rx) = mpsc::channel();
-                let ctx = ui.ctx().clone();
-                self.receiver = Some(rx);
-                std::thread::spawn(move || {
-                    let res = Self::download_and_patch(
-                        |message| {
-                            let _ = tx.send(message);
-                            ctx.request_repaint();
-                        },
-                        Path::new(&old),
-                        &versions_to_install,
-                    );
-                    match res {
-                        Ok(()) => (),
-                        Err(e) => {
-                            tracing::error!("error while downloading the patch or applying it: {e}");
-                            let _ = tx.send(Action::DownloadAndPatchError(e));
-                        }
+            let versions_to_install = self
+                .source
+                .get_versions_to_install(current_version)
+                .to_vec();
+            let old = old.clone();
+            let (tx, rx) = mpsc::channel();
+            let ctx = ui.ctx().clone();
+            self.receiver = Some(rx);
+            std::thread::spawn(move || {
+                let res = Self::download_and_patch(
+                    |message| {
+                        let _ = tx.send(message);
+                        ctx.request_repaint();
+                    },
+                    Path::new(&old),
+                    &versions_to_install,
+                );
+                match res {
+                    Ok(()) => (),
+                    Err(e) => {
+                        tracing::error!("error while downloading the patch or applying it: {e}");
+                        let _ = tx.send(Action::DownloadAndPatchError(e));
                     }
-                });
+                }
+            });
         }
     }
 
