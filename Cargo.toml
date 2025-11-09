@@ -1,8 +1,8 @@
 [workspace]
 members = [
-    "crates/patcher-cli",
+    "crates/patcher-cli", "crates/patcher-common",
     "crates/patcher-gui",
-    "crates/patcher-lib",
+    "crates/patcher-lib", "crates/patcher-terminal",
 ]
 resolver = "3"
 

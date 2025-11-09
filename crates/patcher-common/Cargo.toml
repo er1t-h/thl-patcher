@@ -1,0 +1,19 @@
+[package]
+name = "patcher-common"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+base16ct = "0.3.0"
+minreq = { version = "2.14.1", features = ["https-rustls"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_yaml = "0.9.34"
+sha2 = "0.10.9"
+shellexpand = { version = "3.1.1", default-features = false, features = ["base-0", "tilde"] }
+tempfile = "3.23.0"
+thiserror = "2.0.17"
+thl-patcher = { version = "0.1.0", path = "../patcher-lib", default-features = false, features = ["patch"] }
+walkdir = "2.5.0"
+tar = "0.4.44"
+xz2 = "0.1.7"
+log = "0.4.28"

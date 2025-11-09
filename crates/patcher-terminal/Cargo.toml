@@ -1,14 +1,14 @@
 [package]
-name = "patcher-gui"
+name = "patcher-terminal"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-eframe = { version = "0.33.0", features = ["wgpu"] }
-rfd = "0.15.4"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_yaml = "0.9.34"
 thl-patcher = { version = "0.1.0", path = "../patcher-lib", default-features = false, features = ["patch"] }
 patcher-common = { version = "0.1.0", path = "../patcher-common" }
 log = "0.4.28"
 log4rs = "1.4.0"
+rustyline = "17.0.2"
+indicatif = "0.18.2"

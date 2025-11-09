@@ -3,6 +3,8 @@ use std::{collections::HashMap, fs::File, io::BufReader, path::Path};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
+use crate::error::GlobalErrorType;
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct Determinants {
     pub file: String,
@@ -21,11 +23,33 @@ pub struct Source {
     pub versions: Vec<Version>,
 }
 
+pub struct VersionTransition {
+    pub old: Version,
+    pub new: Version,
+}
+
+impl VersionTransition {
+    pub fn as_ref(&self) -> VersionTransitionRef<'_> {
+        VersionTransitionRef { old: &self.old, new: &self.new }
+    }
+}
+
+pub struct VersionTransitionRef<'a> {
+    pub old: &'a Version,
+    pub new: &'a Version
+}
+
+impl VersionTransitionRef<'_> {
+    pub fn to_owned(&self) -> VersionTransition {
+        VersionTransition { old: self.old.clone(), new: self.new.clone() }
+    }
+}
+
 impl Source {
     pub fn get_current_version(&self, path: &Path) -> Result<Option<usize>, std::io::Error> {
         let mut already_calculated: HashMap<&str, [u8; 64]> = HashMap::new();
         'version: for (i, version) in self.versions.iter().enumerate().rev() {
-            tracing::trace!("checking version `{}`", version.name);
+            log::trace!("checking version `{}`", version.name);
             for determinant in &version.determinants {
                 let hash = if let Some(x) = already_calculated.get(determinant.file.as_str()) {
                     x
@@ -35,10 +59,7 @@ impl Source {
                     let file = match File::open(&path) {
                         Ok(f) => f,
                         Err(e) => {
-                            tracing::trace!(
-                                "error while opening file `{}`: `{e}`",
-                                determinant.file
-                            );
+                            log::trace!("error while opening file `{}`: `{e}`", determinant.file);
                             continue 'version;
                         }
                     };
@@ -54,7 +75,7 @@ impl Source {
                 };
 
                 if hash != determinant.sha256.as_bytes() {
-                    tracing::trace!("sha256 mismatch for file `{}`", determinant.file);
+                    log::trace!("sha256 mismatch for file `{}`", determinant.file);
                     continue 'version;
                 }
             }
@@ -64,6 +85,9 @@ impl Source {
         Ok(None)
     }
 
+    ///
+    /// Gets a slice of all versions from the current one to the last having an update link
+    /// 
     pub fn get_versions_to_install(&self, current: usize) -> &[Version] {
         let versions_to_install = self
             .versions
@@ -77,5 +101,43 @@ impl Source {
             .map_or(versions_to_install, |pos| {
                 versions_to_install.split_at(pos).0
             })
+    }
+
+    ///
+    /// Gets all versions transition between the current one and the last
+    /// 
+    pub fn get_transitions(&self, current: usize) -> impl ExactSizeIterator<Item = VersionTransitionRef<'_>> {
+        let versions_to_install = self
+            .versions
+            .split_at_checked(current)
+            .unwrap_or_default()
+            .1;
+
+        let last_update = versions_to_install
+            .iter()
+            .position(|x| x.update_link.is_none());
+
+        let trimmed_slice = match last_update {
+            Some(x) => {
+                if x + 1 >= versions_to_install.len() {
+                    versions_to_install
+                } else {
+                    &versions_to_install[..x + 1]
+                }
+            }
+            None => versions_to_install
+        };
+        
+        trimmed_slice.windows(2)
+            .map(|slice| {
+                VersionTransitionRef { old: &slice[0], new: &slice[1] }
+            })
+    }
+
+    pub fn from_url(url: &str) -> Result<Self, GlobalErrorType> {
+        match minreq::get(url).send() {
+            Ok(x) => Ok(serde_yaml::from_slice(x.as_bytes())?),
+            Err(e) => Err(e)?
+        }
     }
 }

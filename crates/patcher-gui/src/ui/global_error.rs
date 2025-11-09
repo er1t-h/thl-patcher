@@ -1,13 +1,5 @@
 use eframe::egui::{Color32, RichText, Ui};
-use thiserror::Error;
-
-#[derive(Debug, Error)]
-pub enum GlobalErrorType {
-    #[error("source not found: {0}")]
-    SourceNotFound(#[from] minreq::Error),
-    #[error("source format error: {0}")]
-    SourceFormatError(#[from] serde_yaml::Error),
-}
+use patcher_common::error::GlobalErrorType;
 
 pub struct SourceError {
     pub error: GlobalErrorType,

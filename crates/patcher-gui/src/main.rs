@@ -7,18 +7,14 @@
     clippy::nursery
 )]
 
-use std::{fs::File, io::Write, process::ExitCode};
-
+use std::process::ExitCode;
 use eframe::egui;
-use tracing::level_filters::LevelFilter;
+use log4rs::config::Deserializers;
+use crate::ui::{AppScreen, patcher::Patcher};
+use patcher_common::structures::{config::PatcherConfig, source::Source};
 
-use crate::{
-    structures::{config::PatcherConfig, source::Source},
-    ui::{AppScreen, global_error::GlobalErrorType, patcher::Patcher},
-};
 
-mod error;
-mod structures;
+
 mod ui;
 
 fn get_config() -> PatcherConfig {
@@ -31,20 +27,8 @@ fn get_config() -> PatcherConfig {
     }
 }
 
-fn open_log() -> Box<dyn Write> {
-    let file = File::options().append(true).create(true).open("logs.txt");
-    match file {
-        Ok(x) => Box::new(x),
-        Err(_) => Box::new(std::io::sink()),
-    }
-}
-
 fn main() -> ExitCode {
-    tracing_subscriber::fmt()
-        .with_ansi(false)
-        .with_writer(open_log)
-        .with_max_level(LevelFilter::WARN)
-        .init();
+    let _ = log4rs::init_file("log4rs.yaml", Deserializers::default());
 
     let mut config = get_config();
 
@@ -60,9 +44,12 @@ fn main() -> ExitCode {
         Box::new(|_cc| Ok(Box::new(MyApp::new(&config)))),
     );
     match res {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(()) => {
+            log::debug!("Program exited successfuly");
+            ExitCode::SUCCESS
+        }
         Err(e) => {
-            tracing::error!("couldn't initialize the window: {e}");
+            log::error!("couldn't initialize the window: {e}");
             ExitCode::FAILURE
         }
     }
@@ -74,17 +61,15 @@ struct MyApp {
 
 impl MyApp {
     fn new(config: &PatcherConfig) -> Self {
-        let source: Result<Source, GlobalErrorType> = (|| {
-            let body = minreq::get(&config.source).send()?;
-            Ok(serde_yaml::from_slice(body.as_bytes())?)
-        })();
-
-        match source {
-            Ok(source) => Self {
-                app_screen: AppScreen::Patcher(Patcher::new(config, source)),
-            },
+        match Source::from_url(&config.source) {
+            Ok(source) => {
+                log::debug!("source fetched successfully");
+                Self {
+                    app_screen: AppScreen::Patcher(Patcher::new(config, source)),
+                }
+            }
             Err(e) => {
-                tracing::error!("error while fetching source: {}", e);
+                log::error!("error while fetching source: {e}");
                 Self {
                     app_screen: AppScreen::source_error(e),
                 }
